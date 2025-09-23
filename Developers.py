@@ -1,18 +1,22 @@
 import streamlit as st
 
 def load_developers():
-
     st.title("Meet the Developers")
     st.markdown("---")
 
-    # FIX 1: Create 4 columns and assign to 4 variables
-    col1, col2 = st.columns(4)
+    # FIX: Create 4 columns and assign them to 4 variables
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        # BEST PRACTICE: Use the assets folder and st.image's caption
+        # Using the assets folder and the built-in caption for a cleaner look
         st.image("assets/sanskar.jpg", caption="Sanskar")
 
     with col2:
-        # FIX 2: Use a different image file for each person
-        st.image("assets/vanshita.jpg", caption="Vanshita")
+        st.image("assets/vanshita.png", caption="Vanshita")
         
+    with col3:
+        # NOTE: Add the correct image file for the other developers
+        st.image("assets/abhishek.jpg", caption="Abhishek")
+
+    with col4:
+        st.image("assets/devi.jpg", caption="Devi")
