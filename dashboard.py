@@ -13,8 +13,10 @@ def load_dashboard():
         if not all_files:
             st.error("FATAL: No data files found in './all data/' directory.")
             return pd.DataFrame()
+        # Use on_bad_lines='skip' to handle potential parsing errors in CSV files
         df_list = [pd.read_csv(file, on_bad_lines='skip') for file in all_files]
         df = pd.concat(df_list, ignore_index=True)
+        # Drop rows where essential columns are missing
         df.dropna(subset=['year', 'College', 'Branch'], inplace=True)
         df['year'] = df['year'].astype(int)
         return df
@@ -24,14 +26,12 @@ def load_dashboard():
     if not df.empty:
         st.sidebar.header("Please Filter Here:")
         
-        # --- Sidebar Filters ---
         selected_years = st.sidebar.multiselect(
             "Select Year:",
             options=sorted(df["year"].unique(), reverse=True),
-            default=[2023] # Default to the most recent year for faster loading
+            default=[2023] # Default to a recent year for faster initial load
         )
         
-        # Create a temporary dataframe based on year selection to populate other filters
         df_for_options = df[df['year'].isin(selected_years)]
 
         selected_colleges = st.sidebar.multiselect(
@@ -47,11 +47,12 @@ def load_dashboard():
             options=sorted(df_for_options['Branch'].unique())
         )
 
-        selected_quota = st.sidebar.multiselotect("Select Quota:", options=df["Quota"].unique(), default=["AI"])
+        # FIX: Corrected the typo from 'multiselotect' to 'multiselect'
+        selected_quota = st.sidebar.multiselect("Select Quota:", options=df["Quota"].unique(), default=["AI"])
         selected_caste = st.sidebar.multiselect("Select Caste:", options=df["Caste"].unique(), default=["OPEN"])
         selected_gender = st.sidebar.multiselect("Select Gender:", options=df["Gender"].unique(), default=["Gender-Neutral"])
         
-        # --- Filtering Logic (Applied at the end for robustness) ---
+        # --- Filtering Logic ---
         df_selection = df[
             df['year'].isin(selected_years) &
             df['Quota'].isin(selected_quota) &
@@ -68,7 +69,6 @@ def load_dashboard():
         if df_selection.empty:
             st.warning("No data available for the selected filters.")
         else:
-            # (The rest of the KPI and charting code remains the same)
             st.subheader("Key Performance Indicators")
             avg_opening_rank = int(round(df_selection["Opening Rank"].mean(), 0))
             avg_closing_rank = int(round(df_selection["Closing Rank"].mean(), 0))
