@@ -1,149 +1,135 @@
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from streamlit_option_menu import option_menu
-import logging
-
+import glob
 
 def load_dashboard():
-        
-    # st.set_page_config(page_title="Josaa Data Analysis", layout="wide")
+    """
+    This function encapsulates the entire dashboard page, including data loading,
+    filtering, and visualization. It's called by your main app.py.
+    """
 
-    # Load the data
+    st.title("🎓 JoSAA Analysis Dashboard")
+    st.markdown("---")
+
+    # Load the data using a cached function for better performance
     @st.cache_data
     def get_data():
+        """Loads and combines all 'allrounds.csv' files from the './all data/' directory."""
+        # Use glob to find all combined CSV files
+        all_files = glob.glob("./all data/*allrounds.csv")
+        
+        if not all_files:
+            # Display a persistent error if no data files are found
+            st.error("FATAL: No data files found in the './all data/' directory. Please check the folder name and path.")
+            return pd.DataFrame()  # Return an empty DataFrame to prevent the app from crashing
 
-        df = pd.read_csv("./all data/2016allrounds.csv")
+        # Load and combine all yearly data into a single DataFrame
+        df_list = [pd.read_csv(file) for file in all_files]
+        df = pd.concat(df_list, ignore_index=True)
         return df
 
+    # --- Load Data ---
+    df = get_data()
 
-    df=get_data()
+    # --- Main App Logic ---
+    # Only proceed if the initial data loading was successful and the DataFrame is not empty
+    if not df.empty:
+        st.sidebar.header("Please Filter Here:")
 
+        # --- Sidebar Filters ---
+        # The filters are now cascading: choices in one filter update the options in the next.
+        
+        # 1. Year Filter
+        selected_years = st.sidebar.multiselect(
+            "Select Year:",
+            options=sorted(df["year"].unique(), reverse=True),
+            default=sorted(df["year"].unique(), reverse=True)
+        )
+        
+        # Filter dataframe based on selected years for subsequent filters
+        df_filtered_by_year = df[df['year'].isin(selected_years)]
 
+        # 2. College Filter
+        selected_colleges = st.sidebar.multiselect(
+            "Select College:",
+            options=sorted(df_filtered_by_year['College'].unique())
+        )
+        
+        # Filter further by college for the branch filter
+        if selected_colleges:
+            df_filtered_by_college = df_filtered_by_year[df_filtered_by_year['College'].isin(selected_colleges)]
+        else:
+            df_filtered_by_college = df_filtered_by_year
 
-    # st.set_page_config(page_title="Josaa Data Analysis", layout="wide")
+        # 3. Branch Filter
+        selected_branches = st.sidebar.multiselect(
+            "Select Branch:",
+            options=sorted(df_filtered_by_college['Branch'].unique())
+        )
 
-    st.sidebar.header("Please Filter Here:")
+        # 4. Other Filters
+        selected_quota = st.sidebar.multiselect("Select Quota:", options=df["Quota"].unique(), default=["AI"])
+        selected_caste = st.sidebar.multiselect("Select Caste:", options=df["Caste"].unique(), default=["OPEN"])
+        selected_gender = st.sidebar.multiselect("Select Gender:", options=df["Gender"].unique(), default=["Gender-Neutral"])
+        
+        # --- Filtering Logic ---
+        # Start with the year-filtered data and apply subsequent filters
+        df_selection = df_filtered_by_year.copy()
 
-    # Multiselect widgets for filtering
-    Branch = st.sidebar.multiselect(
-        "Select The Branch:", options=df["Branch"].unique())
+        if selected_colleges:
+            df_selection = df_selection[df_selection['College'].isin(selected_colleges)]
+        if selected_branches:
+            df_selection = df_selection[df_selection['Branch'].isin(selected_branches)]
+        if selected_quota:
+            df_selection = df_selection[df_selection['Quota'].isin(selected_quota)]
+        if selected_caste:
+            df_selection = df_selection[df_selection['Caste'].isin(selected_caste)]
+        if selected_gender:
+            df_selection = df_selection[df_selection['Gender'].isin(selected_gender)]
 
-    Gender = st.sidebar.multiselect(
-        "Select The Gender:", options=df["Gender"].unique())
+        # --- Display Results ---
+        st.header("Filtered Results")
 
-    Quota = st.sidebar.multiselect(
-        "Select The Quota:", options=df["Quota"].unique())
+        # Check if any data remains after filtering
+        if df_selection.empty:
+            st.warning("No data available for the selected filters. Please broaden your search.")
+        else:
+            # --- KPIs Section (Using st.metric for a cleaner look) ---
+            st.subheader("Key Performance Indicators")
+            
+            avg_opening_rank = int(round(df_selection["Opening Rank"].mean(), 0))
+            avg_closing_rank = int(round(df_selection["Closing Rank"].mean(), 0))
+            best_opening_rank = int(df_selection["Opening Rank"].min())
+            max_closing_rank = int(df_selection["Closing Rank"].max())
 
-    Round = st.sidebar.multiselect(
-        "Select The Round:", options=df["round"].unique())
+            kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+            kpi1.metric(label="Avg. Opening Rank", value=f"{avg_opening_rank:,}")
+            kpi2.metric(label="Avg. Closing Rank", value=f"{avg_closing_rank:,}")
+            kpi3.metric(label="Best Opening Rank", value=f"{best_opening_rank:,}")
+            kpi4.metric(label="Max. Closing Rank", value=f"{max_closing_rank:,}")
 
-    Caste = st.sidebar.multiselect(
-        "Select The Caste:", options=df["Caste"].unique())
+            st.markdown("---")
 
-    # Initialize filters as True (select all)
-    branch_filter = df["Branch"].isin(Branch) if Branch else True
-    gender_filter = df["Gender"].isin(Gender) if Gender else True
-    quota_filter = df["Quota"].isin(Quota) if Quota else True
-    round_filter = df["round"].isin(Round) if Round else True
-    caste_filter = df["Caste"].isin(Caste) if Caste else True
+            # --- Charts Section ---
+            st.subheader("Visualizations")
+            
+            # Group data for charts
+            rank_by_college = df_selection.groupby("College")[["Opening Rank", "Closing Rank"]].mean().sort_values("Closing Rank").reset_index()
 
+            # Create a single, more informative bar chart
+            fig = px.bar(
+                rank_by_college,
+                x="College",
+                y=["Opening Rank", "Closing Rank"],
+                title="<b>Average Opening & Closing Ranks by College</b>",
+                template="plotly_white",
+                barmode='group', # Puts bars side-by-side for easy comparison
+                labels={"value": "Average Rank", "variable": "Rank Type"}
+            )
+            fig.update_layout(xaxis_title="College", yaxis_title="Average Rank", xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
 
-    # branch_filter = df["Branch"].isin(Branch) if Branch else df["Branch"].notna()
-    # gender_filter = df["Gender"].isin(Gender) if Gender else df["Gender"].notna()
-    # quota_filter = df["Quota"].isin(Quota) if Quota else df["Quota"].notna()
-    # round_filter = df["round"].isin(Round) if Round else df["round"].notna()
-    # caste_filter = df["Caste"].isin(Caste) if Caste else df["Caste"].notna()
-
-
-    #df_selection = df[branch_filter & gender_filter & quota_filter & round_filter & caste_filter]
-    df_selection={}
-    try:
-    # Apply filters to the dataframe
-        df_selection = df.loc[branch_filter & gender_filter & quota_filter & round_filter & caste_filter]
-    except Exception as e:
-        st.error("An error occurred: {}".format(e))
-
-    st.title("Dashboard ")
-
-   
-    #kpis making
-    avg_opening_rank=int(round(df_selection["Opening Rank"].mean(),0))
-    avg_closing_rank=int(round(df_selection["Closing Rank"].mean(),0))
-    max_opening_rank=int(round(df_selection["Opening Rank"].min(),0))
-    min_closing_rank=int(round(df_selection["Closing Rank"].max(),0))
-
-
-
-    left_col,middle_col,right_col=st.columns(3)
-
-    with left_col:
-        st.subheader("Average Opening Rank: ")
-        st.subheader(f"{avg_opening_rank:,}")
-
-
-    with middle_col:
-        st.subheader("Average Closing Rank: ")
-        st.subheader(f"{avg_closing_rank:,}")
-
-
-    with right_col:
-        st.subheader("Minimum Opening Rank: ")
-        st.subheader(f"{max_opening_rank:,}")
-        st.subheader("Maximum closing Rank: ")
-        st.subheader(f"{max_opening_rank:,}")
-
-
-
-
-    st.markdown("----")
-
-
-
-    opencollegewise_display = df_selection.groupby(by=["College"])[["Opening Rank"]].mean().reset_index()
-    closecollegewise_display = df_selection.groupby(by=["College"])[["Closing Rank"]].mean().reset_index()
-
-
-    # Create a bar plot
-    figure1 = px.bar(
-        opencollegewise_display,
-        x="Opening Rank",
-        y="College",
-        orientation="h",
-        title="<b>Opening Ranks by College</b>",
-        color_discrete_sequence=["#0083B8"] * len(opencollegewise_display),
-        template="plotly_white",
-    )
-
-    figure2 = px.bar(
-        closecollegewise_display,
-        x="Closing Rank",
-        y="College",
-        orientation="h",
-        title="<b>Closing Ranks by College</b>",
-        color_discrete_sequence=["#0083B8"] * len(closecollegewise_display),
-        template="plotly_white",
-    )
-
-    # letcol,rigcol=st.columns(2)
-    # letcol.plotly_chart(figure1,use_container_width=True)
-    # rigcol.plotly_chart(figure2,use_container_width=True)
-
-    hide_st_style= """
-                <style>
-                #MainMenu {visibility: hidden;}
-                footer {visibility: hidden;}
-                header {visibility:hidden;}
-                </style>
-            """
-
-    st.markdown(hide_st_style, unsafe_allow_html=True)
-
-    st.plotly_chart(figure1)
-    st.plotly_chart(figure2)
-
-
-    st.dataframe(df_selection)
-
-    # Display filtered dataframe
-    # st.dataframe(df_selection)
+            # --- Data Table Section ---
+            st.subheader("Detailed Data View")
+            st.dataframe(df_selection)
