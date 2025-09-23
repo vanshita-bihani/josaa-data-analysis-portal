@@ -13,12 +13,19 @@ def load_dashboard():
         if not all_files:
             st.error("FATAL: No data files found in './all data/' directory.")
             return pd.DataFrame()
-        # Use on_bad_lines='skip' to handle potential parsing errors in CSV files
+        
         df_list = [pd.read_csv(file, on_bad_lines='skip') for file in all_files]
         df = pd.concat(df_list, ignore_index=True)
-        # Drop rows where essential columns are missing
+
+        # --- DATA CLEANING FIX ---
+        # 1. Clean the 'year' column to prevent errors
         df.dropna(subset=['year', 'College', 'Branch'], inplace=True)
         df['year'] = df['year'].astype(int)
+        
+        # 2. Convert rank columns to numbers, coercing errors to NaN (Not a Number)
+        df['Opening Rank'] = pd.to_numeric(df['Opening Rank'], errors='coerce')
+        df['Closing Rank'] = pd.to_numeric(df['Closing Rank'], errors='coerce')
+        
         return df
 
     df = get_data()
@@ -26,33 +33,23 @@ def load_dashboard():
     if not df.empty:
         st.sidebar.header("Please Filter Here:")
         
+        # (The rest of the file is the same as the last working version)
         selected_years = st.sidebar.multiselect(
-            "Select Year:",
-            options=sorted(df["year"].unique(), reverse=True),
-            default=[2023] # Default to a recent year for faster initial load
+            "Select Year:", options=sorted(df["year"].unique(), reverse=True), default=[2023]
         )
-        
         df_for_options = df[df['year'].isin(selected_years)]
-
         selected_colleges = st.sidebar.multiselect(
-            "Select College:",
-            options=sorted(df_for_options['College'].unique())
+            "Select College:", options=sorted(df_for_options['College'].unique())
         )
-        
         if selected_colleges:
             df_for_options = df_for_options[df_for_options['College'].isin(selected_colleges)]
-
         selected_branches = st.sidebar.multiselect(
-            "Select Branch:",
-            options=sorted(df_for_options['Branch'].unique())
+            "Select Branch:", options=sorted(df_for_options['Branch'].unique())
         )
-
-        # FIX: Corrected the typo from 'multiselotect' to 'multiselect'
         selected_quota = st.sidebar.multiselect("Select Quota:", options=df["Quota"].unique(), default=["AI"])
         selected_caste = st.sidebar.multiselect("Select Caste:", options=df["Caste"].unique(), default=["OPEN"])
         selected_gender = st.sidebar.multiselect("Select Gender:", options=df["Gender"].unique(), default=["Gender-Neutral"])
         
-        # --- Filtering Logic ---
         df_selection = df[
             df['year'].isin(selected_years) &
             df['Quota'].isin(selected_quota) &
@@ -64,7 +61,6 @@ def load_dashboard():
         if selected_branches:
             df_selection = df_selection[df_selection['Branch'].isin(selected_branches)]
 
-        # --- Display Results ---
         st.header("Filtered Results")
         if df_selection.empty:
             st.warning("No data available for the selected filters.")
